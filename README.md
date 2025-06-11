@@ -1,2 +1,0 @@
-# EcoEar
-(to be revised)
