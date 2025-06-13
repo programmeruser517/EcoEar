@@ -1,5 +1,7 @@
 # EcoEar
 
+![EcoEar Logo](./ecoear/assets/images/banner_curved.png)
+
 EcoEar is a Flutter-based mobile application and Chrome extension designed to detect wildlife calls through a phone's microphone and share detection data with nearby users. The project integrates Firebase for authentication, storage, and messaging, and provides a schedule for building the app, extension, and data processing pipeline.
 
 ## Project Setup
