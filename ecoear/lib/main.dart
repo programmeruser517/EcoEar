@@ -1,122 +1,281 @@
+import 'dart:math';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(EcoEarApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class EcoEarApp extends StatefulWidget {
+  @override
+  State<EcoEarApp> createState() => _EcoEarAppState();
+}
 
-  // This widget is the root of your application.
+class _EcoEarAppState extends State<EcoEarApp> with WidgetsBindingObserver {
+  // theme
+  bool _isDark = false;
+  // lifecycle
+  AppLifecycleState _state = AppLifecycleState.resumed;
+  // notifications
+  final _notif = FlutterLocalNotificationsPlugin();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadTheme();
+    _initNotifications();
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _isDark = prefs.getBool('darkMode') ?? false);
+  }
+
+  Future<void> _saveTheme(bool v) async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setBool('darkMode', v);
+  }
+
+  Future<void> _initNotifications() async {
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _notif.initialize(InitializationSettings(android: android));
+  }
+
+  void _sendStateNotification(String msg) {
+    const androidDetails = AndroidNotificationDetails(
+      'ecoseg',
+      'EcoEar',
+      importance: Importance.high,
+    );
+    _notif.show(
+      0,
+      'EcoEar Status',
+      msg,
+      NotificationDetails(android: androidDetails),
+      payload: 'state',
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState newState) {
+    super.didChangeAppLifecycleState(newState);
+    setState(() => _state = newState);
+
+    // when going background/inactive, fire a notification
+    if (newState == AppLifecycleState.inactive ||
+        newState == AppLifecycleState.paused) {
+      List<String> msgs = [
+        'Still listening… 🤫',
+        'EcoEar’s on pause! 🌱',
+        'We’re here when you return! 🐸',
+      ];
+      _sendStateNotification(msgs[Random().nextInt(msgs.length)]);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+      title: 'EcoEar',
+      theme: _isDark ? ThemeData.dark() : ThemeData.light(),
+      home: HomePage(
+        isDark: _isDark,
+        onToggleTheme: (v) {
+          _saveTheme(v);
+          setState(() => _isDark = v);
+        },
+        lifecycle: _state,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class HomePage extends StatelessWidget {
+  final bool isDark;
+  final ValueChanged<bool> onToggleTheme;
+  final AppLifecycleState lifecycle;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+  const HomePage({
+    required this.isDark,
+    required this.onToggleTheme,
+    required this.lifecycle,
+  });
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      // persistent top banner
+      body: Column(
+        children: [
+          NotificationBanner(state: lifecycle),
+          Expanded(
+            child: Stack(
+              children: [
+                // Layered cards
+                Positioned(
+                  top: 20,
+                  left: 20,
+                  right: 20,
+                  child: Card(
+                    elevation: 8,
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('Layered Card #1'),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 120,
+                  left: 40,
+                  right: 40,
+                  child: Card(
+                    elevation: 4,
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('Layered Card #2'),
+                    ),
+                  ),
+                ),
+                // waveform placeholder
+                Center(child: Text('🎶 Waveform here 🎶')),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: Icon(Icons.settings),
+        onPressed: () => showModalBottomSheet(
+          context: context,
+          builder: (_) =>
+              SettingsModal(isDark: isDark, onToggle: onToggleTheme),
+        ),
+      ),
+    );
+  }
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class NotificationBanner extends StatefulWidget {
+  final AppLifecycleState state;
+  const NotificationBanner({required this.state});
+  @override
+  _NotificationBannerState createState() => _NotificationBannerState();
+}
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+class _NotificationBannerState extends State<NotificationBanner>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctr;
+  @override
+  void initState() {
+    super.initState();
+    _ctr = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 400),
+    );
+    _showHide();
+  }
+
+  @override
+  void didUpdateWidget(covariant NotificationBanner old) {
+    super.didUpdateWidget(old);
+    _showHide();
+  }
+
+  void _showHide() {
+    if (widget.state == AppLifecycleState.resumed)
+      _ctr.forward();
+    else
+      _ctr.reverse();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
+    String msg;
+    Color color;
+    switch (widget.state) {
+      case AppLifecycleState.resumed:
+        msg = 'EcoEar is active';
+        color = Colors.green;
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+        msg = 'EcoEar in background';
+        color = Colors.orange;
+        break;
+      default:
+        msg = 'EcoEar stopped';
+        color = Colors.grey;
+    }
+    return SizeTransition(
+      sizeFactor: _ctr,
+      axisAlignment: -1,
+      child: Container(
+        color: color,
+        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        child: Row(
+          children: [
+            // your circular logo
+            Image.asset('assets/images/logo_curved.png', width: 32, height: 32),
+            SizedBox(width: 12),
+            Text(msg, style: TextStyle(color: Colors.white)),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctr.dispose();
+    super.dispose();
+  }
+}
+
+class SettingsModal extends StatelessWidget {
+  final bool isDark;
+  final ValueChanged<bool> onToggle;
+  SettingsModal({required this.isDark, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    // dummy UID for demo
+    String uid = FirebaseFirestore.instance.app.options.appId;
+    return Padding(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Settings & Feedback', style: TextStyle(fontSize: 18)),
+          SwitchListTile(
+            title: Text('Dark Mode'),
+            value: isDark,
+            onChanged: onToggle,
+          ),
+          ListTile(
+            leading: Icon(Icons.person),
+            title: Text('User ID'),
+            subtitle: Text(uid),
+          ),
+          ListTile(
+            leading: Icon(Icons.feedback),
+            title: Text('Send Feedback'),
+            onTap: () {
+              // TODO: wire feedback form
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.show_chart),
+            title: Text('Call Streak'),
+            subtitle: Text('🔥 5 days!'),
+          ),
+        ],
+      ),
     );
   }
 }

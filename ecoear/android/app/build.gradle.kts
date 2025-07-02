@@ -8,11 +8,12 @@ plugins {
 android {
     namespace = "com.example.ecoear"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -41,4 +42,12 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    /** implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.11.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.1.4") */
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
